@@ -1,0 +1,66 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        node-version: [14.x, 16.x]
+
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: Use Node.js ${{ matrix.node-version }}
+      uses: actions/setup-node@v1
+      with:
+        node-version: ${{ matrix.node-version }}
+
+    - name: Install dependencies (Server)
+      run: npm install
+      working-directory: ./server
+
+    - name: Install dependencies (Client)
+      run: npm install
+      working-directory: ./client
+
+    - name: Run tests (Server)
+      run: npm test
+      working-directory: ./server
+
+    - name: Run tests (Client)
+      run: npm test
+      working-directory: ./client
+
+    - name: Build client for production
+      run: npm run build
+      working-directory: ./client
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: Set up Docker environment
+      run: docker-compose up -d
+
+    - name: Deploy to server
+      run: |
+        scp -r ./client/build <deployment_user>@<deployment_server>:<deployment_directory>
+        ssh <deployment_user>@<deployment_server> 'docker-compose -f <deployment_directory>/docker-compose.yml up --build -d'
+      env:
+        DEPLOYMENT_USER: ${{ secrets.DEPLOYMENT_USER }}
+        DEPLOYMENT_SERVER: ${{ secrets.DEPLOYMENT_SERVER }}
+        DEPLOYMENT_DIRECTORY: ${{ secrets.DEPLOYMENT_DIRECTORY }}
+
+    - name: Notify deployment success
+      run: echo "Deployment successful!"
